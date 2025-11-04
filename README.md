@@ -155,7 +155,7 @@ Cubre:
 
 **Miriam del Blanco** 
 📍 Madrid, España  
-🔗 [LinkedIn](https://www.linkedin.com/in/miriambdelblanco) | [GitHub](https://github.com/mirdbg)
+🔗 [LinkedIn](https://www.linkedin.com/in/miriam-del-blanco-gonz%C3%A1lez/) | [GitHub](https://github.com/mirdbg)
 
 ---
 
