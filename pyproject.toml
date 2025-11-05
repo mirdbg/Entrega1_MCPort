@@ -5,11 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mcport"
 version = "0.1.0"
-description = "Monte Carlo y reporting para series y carteras financieras (src layout)"
+description = "Monte Carlo y reporting para series y carteras financieras"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Miriam Del Blanco" }]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
   "numpy==2.3.4",
   "pandas==2.3.3",
@@ -23,8 +23,12 @@ dependencies = [
   "pillow==12.0.0",
 ]
 
+[tool.setuptools]
+package-dir = {"" = "src"}
+
 [tool.setuptools.packages.find]
 where = ["src"]
+include = ["mcport*"]   # asegura que coja mcport y subpaquetes
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

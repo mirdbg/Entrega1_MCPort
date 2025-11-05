@@ -166,6 +166,7 @@ class MonteCarloSimulation:
 
 
 
+"""
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
@@ -182,7 +183,6 @@ from .models import PriceSeries
 
 
 
-"""
 @dataclass
 class MonteCarloSimulation:
     
