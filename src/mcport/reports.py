@@ -1,131 +1,288 @@
-import os
-import seaborn as sns
-import matplotlib.pyplot as plt
-from matplotlib.dates import AutoDateLocator, ConciseDateFormatter
-from matplotlib.ticker import FuncFormatter
-from matplotlib.backends.backend_pdf import PdfPages
-import pandas as pd
+# src/mcport/reports.py
+from __future__ import annotations
+from dataclasses import dataclass
+from typing import Optional, Dict, Any, Sequence
+
 import numpy as np
-from .montecarlo import *
-from .models import *
-from .utils import *
-from .providers import *
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 
-sns.set_theme(context="notebook", style="whitegrid")
+from .plot import (
+    plot_priceseries_history,
+    plot_priceseries_drawdown,
+    plot_priceseries_rolling_vol,
+    plot_priceseries_rolling_return,
+    plot_priceseries_returns_hist,
+    plot_portfolio_equity,
+    plot_portfolio_drawdown,
+    plot_portfolio_weights,
+    plot_portfolio_corr_heatmap,
+    _DEF_FIGSIZE, _DPI
+)
+from .montecarlo_plots import (
+    plot_mc_paths,
+    plot_mc_fan,
+    plot_mc_overlay_with_history,
+    plot_mc_terminal_hist,
+    plot_mc_terminal_cdf
+)
 
-def _ensure_dir(path: str):
-    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+# Espera tus clases:
+# - PriceSeries
+# - Portfolio
+# - MonteCarloSimulation
 
-def _format_dates(ax):
-    loc = AutoDateLocator()
-    ax.xaxis.set_major_locator(loc)
-    ax.xaxis.set_major_formatter(ConciseDateFormatter(loc))
-
-def _currency_fmt(symbol: str = "€"):
-    return FuncFormatter(lambda y, _: f"{y:,.2f}{symbol}".replace(",", "X").replace(".", ",").replace("X", "."))
-
-
-class MonteCarloPlots:
-    def __init__(self, mc: MonteCarloSimulation):
-        self.mc = mc
-
-    def plot_history(self, path: str | None = None, currency_symbol: str | None = None):
-        df = self.mc._price_df
-        if df.empty:
-            return None, None
-        fig, ax = plt.subplots(figsize=(10,4))
-        sns.lineplot(x=df.index, y=df["price"], ax=ax, lw=1.9, label="Histórico")
-        ax.set_title(f"Historical Price — {self.mc.symbol}")
-        ax.set_xlabel("Fecha"); ax.set_ylabel("Precio")
-        if currency_symbol: ax.yaxis.set_major_formatter(_currency_fmt(currency_symbol))
-        _format_dates(ax); ax.legend(frameon=False); fig.tight_layout()
-        if path: _ensure_dir(path); fig.savefig(path, bbox_inches="tight", dpi=150); plt.close(fig)
-        return fig, ax
-
-    def plot_simulations(self, prices: np.ndarray, max_paths: int = 50, index=None,
-                         percentiles=(5,50,95), path: str | None = None):
-        if prices is None or prices.size == 0: return None, None
-        steps, n_sims = prices.shape
-        k = min(max_paths, n_sims)
-        x = np.arange(steps) if index is None else np.array(list(index))
-        fig, ax = plt.subplots(figsize=(10,5))
-        for i in range(k):
-            sns.lineplot(x=x, y=prices[:, i], ax=ax, lw=1.0, alpha=0.25)
-        p_low, p_med, p_high = np.percentile(prices, percentiles, axis=1)
-        sns.lineplot(x=x, y=p_med, ax=ax, lw=2.2, label=f"P{percentiles[1]}")
-        ax.fill_between(x, p_low, p_high, alpha=0.18, label=f"P{percentiles[0]}–P{percentiles[2]}")
-        ax.set_title(f"Monte Carlo Simulations — {self.mc.symbol}")
-        ax.set_xlabel("Fecha" if index is not None else "Paso"); ax.set_ylabel("Precio simulado")
-        if index is not None: _format_dates(ax)
-        ax.legend(frameon=False); fig.tight_layout()
-        if path: _ensure_dir(path); fig.savefig(path, bbox_inches="tight", dpi=150); plt.close(fig)
-        return fig, ax
-
-    def plot_history_with_simulations(self, prices: np.ndarray, use_business_days=True,
-                                      max_paths=50, percentiles=(5,50,95),
-                                      currency_symbol: str | None = None,
-                                      path: str | None = None):
-        df = self.mc._price_df
-        if df.empty or prices is None or prices.size == 0: return None, None
-        last_dt = df.index[-1]
-        steps, n_sims = prices.shape
-        if use_business_days:
-            future_index = pd.bdate_range(last_dt, periods=steps+1, inclusive="right")
-        else:
-            future_index = pd.date_range(last_dt, periods=steps+1, inclusive="right", freq="D")
-        fig, ax = plt.subplots(figsize=(11,5.5))
-        sns.lineplot(x=df.index, y=df["price"], ax=ax, lw=1.9, label="Histórico")
-        k = min(max_paths, n_sims)
-        for i in range(k):
-            sns.lineplot(x=future_index, y=prices[:, i], ax=ax, lw=1.0, alpha=0.22)
-        p_low, p_med, p_high = np.percentile(prices, percentiles, axis=1)
-        sns.lineplot(x=future_index, y=p_med, ax=ax, lw=2.2, label=f"Mediana (P{percentiles[1]})")
-        ax.fill_between(future_index, p_low, p_high, alpha=0.18, label=f"Banda P{percentiles[0]}–P{percentiles[2]}")
-        last_price = float(df["price"].iloc[-1])
-        ax.axhline(last_price, ls=":", lw=1.2, alpha=0.6, label="Último precio")
-        ax.set_title(f"Historical + Monte Carlo — {self.mc.symbol}")
-        ax.set_xlabel("Fecha"); ax.set_ylabel("Precio")
-        if currency_symbol: ax.yaxis.set_major_formatter(_currency_fmt(currency_symbol))
-        _format_dates(ax); ax.legend(frameon=False); fig.tight_layout()
-        if path: _ensure_dir(path); fig.savefig(path, bbox_inches="tight", dpi=150); plt.close(fig)
-        return fig, ax
-
-    def plot_final_hist(self, prices: np.ndarray, bins: int = 50,
-                        currency_symbol: str | None = None, path: str | None = None):
-        if prices is None or prices.size == 0: return None, None
-        finals = prices[-1, :] if prices.ndim == 2 else prices
-        fig, ax = plt.subplots(figsize=(9,4.5))
-        sns.histplot(finals, bins=bins, ax=ax, kde=True, alpha=0.85)
-        mu, med = float(np.mean(finals)), float(np.median(finals))
-        ax.axvline(mu, ls="--", lw=1.6, label=f"Media: {mu:,.2f}")
-        ax.axvline(med, ls=":",  lw=1.6, label=f"Mediana: {med:,.2f}")
-        ax.set_title(f"Terminal Value Distribution — {self.mc.symbol}")
-        ax.set_xlabel("Valor terminal"); ax.set_ylabel("Frecuencia")
-        if currency_symbol: ax.xaxis.set_major_formatter(_currency_fmt(currency_symbol))
-        ax.legend(frameon=False); fig.tight_layout()
-        if path: _ensure_dir(path); fig.savefig(path, bbox_inches="tight", dpi=150); plt.close(fig)
-        return fig, ax
+def _figure_text_page(title: str, lines: Sequence[str], footer: Optional[str] = None):
+    fig = plt.figure(figsize=(8.27, 11.69), dpi=_DPI)  # A4 vertical aprox
+    fig.suptitle(title, fontsize=18, y=0.98)
+    ax = fig.add_axes([0.08, 0.06, 0.84, 0.88])
+    ax.axis("off")
+    ypos = 0.95
+    for line in lines:
+        ax.text(0.0, ypos, line, fontsize=11, va="top", ha="left", family="monospace")
+        ypos -= 0.035
+    if footer:
+        ax.text(0.0, 0.02, footer, fontsize=9, va="bottom", ha="left", alpha=0.6)
+    return fig
 
 
-class MonteCarloReport:
+def _table_figure(title: str, df: pd.DataFrame, note: Optional[str] = None):
+    fig = plt.figure(figsize=(8.27, 11.69), dpi=_DPI)
+    fig.suptitle(title, fontsize=16, y=0.98)
+    ax = fig.add_axes([0.06, 0.06, 0.88, 0.88])
+    ax.axis("off")
+    tbl = ax.table(cellText=df.values, colLabels=df.columns, rowLabels=df.index,
+                   loc="center")
+    tbl.auto_set_font_size(False)
+    tbl.set_fontsize(9)
+    tbl.scale(1.0, 1.2)
+    if note:
+        ax.text(0.0, 0.02, note, fontsize=9, va="bottom", ha="left", alpha=0.6)
+    return fig
+
+
+@dataclass
+class PDFReportConfig:
+    include_component_plots: bool = True
+    include_corr_heatmap: bool = True
+    include_weights: bool = True
+    include_returns_hist: bool = True
+    rolling_vol_window: int = 20
+    rolling_ret_window: int = 63
+
+    # Monte Carlo
+    do_montecarlo: bool = True
+    mc_days: int = 252
+    mc_sims: int = 2000
+    mc_seed: int = 123
+    mc_show_paths: int = 120
+    mc_overlay_history_days: int = 252
+
+
+class PortfolioReporter:
     """
-    Informe visual para cualquier activo/cartera compatible con MonteCarloSimulation.
+    Genera un PDF con:
+      - Portada
+      - Composición de la cartera
+      - Stats de cartera y por componente
+      - Plots (equity, drawdowns, correlaciones, pesos, y plots por activo)
+      - Sección Monte Carlo (overlay histórico + trayectorias, abanico percentiles, histograma terminal, CDF)
     """
-    def __init__(self, mc: MonteCarloSimulation):
-        self.mc = mc
-        self.plots = MonteCarloPlots(mc)
 
-    def to_pdf(self, prices: np.ndarray, pdf_path: str,
-               include_hist=True, include_hist_sims=True, include_final_hist=True):
-        _ensure_dir(pdf_path)
-        with PdfPages(pdf_path) as pdf:
-            if include_hist:
-                fig, _ = self.plots.plot_history()
-                if fig: pdf.savefig(fig, dpi=150); plt.close(fig)
-            if include_hist_sims:
-                fig, _ = self.plots.plot_history_with_simulations(prices=prices)
-                if fig: pdf.savefig(fig, dpi=150); plt.close(fig)
-            if include_final_hist:
-                fig, _ = self.plots.plot_final_hist(prices=prices)
-                if fig: pdf.savefig(fig, dpi=150); plt.close(fig)
-        return pdf_path
+    def __init__(self, portfolio, output_path: str, config: Optional[PDFReportConfig] = None):
+        self.pf = portfolio
+        self.output_path = output_path
+        self.cfg = config or PDFReportConfig()
+
+    def _component_stats_df(self) -> pd.DataFrame:
+        rows = []
+        for ps, w in zip(self.pf.positions, self.pf.weights):
+            stats = ps.extra_stats()
+            rows.append([
+                f"{w:.2%}",
+                f"{ps.mu:.6f}",
+                f"{ps.sigma:.6f}",
+                f"{stats.get('sharpe_daily', np.nan):.3f}",
+                f"{stats.get('skew', np.nan):.3f}",
+                f"{stats.get('kurtosis', np.nan):.3f}",
+                f"{stats.get('var_95', np.nan):.4f}",
+                f"{stats.get('cvar_95', np.nan):.4f}",
+            ])
+        df = pd.DataFrame(rows,
+                          index=[ps.symbol for ps in self.pf.positions],
+                          columns=["Weight", "μ (daily)", "σ (daily)", "Sharpe(d)", "Skew", "Kurt(excess)", "VaR95", "CVaR95"])
+        return df
+
+    def _portfolio_stats_df(self) -> pd.DataFrame:
+        r = self.pf.log_returns()
+        if r.empty:
+            return pd.DataFrame({"Value": []})
+        mu, sigma = r.mean(), r.std(ddof=1)
+        mu_ann, sigma_ann = mu * 252, sigma * np.sqrt(252)
+        sharpe_d = (mu / sigma) if sigma > 0 else np.nan
+        # Max drawdown sobre equity:
+        eq = self.pf.value_series()
+        peak = eq.cummax()
+        dd = (eq / peak) - 1.0
+        max_dd = dd.min()
+        # Simple VaR/CVaR al 95%
+        var95 = np.percentile(r.values, 5)
+        cvar95 = r[r.values <= var95].mean()
+
+        df = pd.DataFrame({
+            "Metric": ["μ (daily)", "σ (daily)", "Sharpe (daily)", "μ (annual)", "σ (annual)", "Max Drawdown", "VaR 95% (daily)", "CVaR 95% (daily)"],
+            "Value": [mu, sigma, sharpe_d, mu_ann, sigma_ann, max_dd, var95, cvar95]
+        })
+        df["Value"] = df["Value"].map(lambda x: f"{x:.6f}" if isinstance(x, (int, float, np.floating)) else x)
+        return df.set_index("Metric")
+
+    def build(self) -> str:
+        with PdfPages(self.output_path) as pdf:
+            # Portada
+            lines = [
+                f"Portfolio: {self.pf.name}",
+                f"Currency: {self.pf.currency}",
+                f"Positions: {', '.join([ps.symbol for ps in self.pf.positions])}",
+                f"Weights: {', '.join([f'{w:.2%}' for w in self.pf.weights])}",
+            ]
+            fig = _figure_text_page("Portfolio Report", lines, footer="Generated by mcport.report")
+            pdf.savefig(fig); plt.close(fig)
+
+            # Composición
+            comp = pd.DataFrame({
+                "Symbol": [ps.symbol for ps in self.pf.positions],
+                "Asset Type": [ps.asset_type for ps in self.pf.positions],
+                "Provider": [ps.provider for ps in self.pf.positions],
+                "Weight": [f"{w:.2%}" for w in self.pf.weights],
+                "Last Price": [ps.data['price'].dropna().iloc[-1] if not ps.data.empty else np.nan for ps in self.pf.positions],
+            })
+            comp = comp.set_index("Symbol")
+            fig = _table_figure("Composition", comp)
+            pdf.savefig(fig); plt.close(fig)
+
+            # Stats de cartera
+            fig = _table_figure("Portfolio Stats", self._portfolio_stats_df())
+            pdf.savefig(fig); plt.close(fig)
+
+            # Stats por componente
+            fig = _table_figure("Component Stats (daily)", self._component_stats_df(),
+                                note="μ/σ en retornos log diarios; VaR/CVaR a 95%.")
+            pdf.savefig(fig); plt.close(fig)
+
+            # Plots de cartera
+            fig = plt.figure(figsize=(8.7, 5.2), dpi=_DPI); ax = fig.add_subplot(111)
+            plot_portfolio_equity(self.pf, ax=ax, show=False)
+            pdf.savefig(fig); plt.close(fig)
+
+            fig = plt.figure(figsize=(8.7, 5.2), dpi=_DPI); ax = fig.add_subplot(111)
+            plot_portfolio_drawdown(self.pf, ax=ax, show=False)
+            pdf.savefig(fig); plt.close(fig)
+
+            if self.cfg.include_weights:
+                fig = plt.figure(figsize=(7.8, 6.4), dpi=_DPI); ax = fig.add_subplot(111)
+                plot_portfolio_weights(self.pf, ax=ax, show=False)
+                pdf.savefig(fig); plt.close(fig)
+
+            if self.cfg.include_corr_heatmap:
+                fig = plt.figure(figsize=(7.2, 6.4), dpi=_DPI); ax = fig.add_subplot(111)
+                plot_portfolio_corr_heatmap(self.pf, ax=ax, show=False)
+                pdf.savefig(fig); plt.close(fig)
+
+            # Plots por componente
+            if self.cfg.include_component_plots:
+                for ps in self.pf.positions:
+                    fig = plt.figure(figsize=(8.7, 5.2), dpi=_DPI); ax = fig.add_subplot(111)
+                    plot_priceseries_history(ps, ax=ax, show=False)
+                    pdf.savefig(fig); plt.close(fig)
+
+                    fig = plt.figure(figsize=(8.7, 5.2), dpi=_DPI); ax = fig.add_subplot(111)
+                    plot_priceseries_drawdown(ps, ax=ax, show=False)
+                    pdf.savefig(fig); plt.close(fig)
+
+                    fig = plt.figure(figsize=(8.7, 5.2), dpi=_DPI); ax = fig.add_subplot(111)
+                    plot_priceseries_rolling_vol(ps, window=self.cfg.rolling_vol_window, ax=ax, show=False)
+                    pdf.savefig(fig); plt.close(fig)
+
+                    fig = plt.figure(figsize=(8.7, 5.2), dpi=_DPI); ax = fig.add_subplot(111)
+                    plot_priceseries_rolling_return(ps, window=self.cfg.rolling_ret_window, ax=ax, show=False)
+                    pdf.savefig(fig); plt.close(fig)
+
+                    if self.cfg.include_returns_hist:
+                        fig = plt.figure(figsize=(8.7, 5.2), dpi=_DPI); ax = fig.add_subplot(111)
+                        plot_priceseries_returns_hist(ps, ax=ax, show=False)
+                        pdf.savefig(fig); plt.close(fig)
+
+            # Sección Monte Carlo
+            if self.cfg.do_montecarlo:
+                try:
+                    from .montecarlo import MonteCarloSimulation
+                except Exception:
+                    MonteCarloSimulation = None
+
+                if MonteCarloSimulation is not None:
+                    mc = MonteCarloSimulation(
+                        price_series=self.pf,
+                        days=self.cfg.mc_days,
+                        n_sims=self.cfg.mc_sims,
+                        seed=self.cfg.mc_seed,
+                        capital_inicial=1000.0,
+                        correlate_assets=True,
+                    )
+                    out = mc.simulate_and_summarize()
+                    values = out["valores"]  # (n_sims, T+1)
+
+                    # Resumen MC en tabla
+                    summ = out["summary"]
+                    df = pd.DataFrame({
+                        "Metric": list(summ.keys()),
+                        "Value": list(summ.values()),
+                    }).set_index("Metric")
+                    fig = _table_figure("Monte Carlo — Summary", df)
+                    pdf.savefig(fig); plt.close(fig)
+
+                    # Overlay histórico + trayectorias
+                    eq_hist = self.pf.value_series(initial_capital=out["summary"]["capital_inicial"])
+                    fig = plt.figure(figsize=(8.7, 5.2), dpi=_DPI); ax = fig.add_subplot(111)
+                    plot_mc_overlay_with_history(eq_hist, values, ax=ax, show=False,
+                                                 last_n_history=self.cfg.mc_overlay_history_days,
+                                                 n_show=self.cfg.mc_show_paths)
+                    pdf.savefig(fig); plt.close(fig)
+
+                    # Abanico de percentiles
+                    fig = plt.figure(figsize=(8.7, 5.2), dpi=_DPI); ax = fig.add_subplot(111)
+                    plot_mc_fan(values, ax=ax, show=False)
+                    pdf.savefig(fig); plt.close(fig)
+
+                    # Muestras de trayectorias
+                    fig = plt.figure(figsize=(8.7, 5.2), dpi=_DPI); ax = fig.add_subplot(111)
+                    plot_mc_paths(values, n_show=self.cfg.mc_show_paths, ax=ax, show=False)
+                    pdf.savefig(fig); plt.close(fig)
+
+                    # Distribución terminal
+                    fig = plt.figure(figsize=(8.7, 5.2), dpi=_DPI); ax = fig.add_subplot(111)
+                    plot_mc_terminal_hist(values, ax=ax, show=False)
+                    pdf.savefig(fig); plt.close(fig)
+
+                    fig = plt.figure(figsize=(8.7, 5.2), dpi=_DPI); ax = fig.add_subplot(111)
+                    plot_mc_terminal_cdf(values, ax=ax, show=False)
+                    pdf.savefig(fig); plt.close(fig)
+
+            # Cierre del PDF añade metadatos
+            d = pdf.infodict()
+            d["Title"] = f"Portfolio Report — {self.pf.name}"
+            d["Author"] = "mcport.report"
+            d["Subject"] = "Portfolio Analytics with Monte Carlo"
+            d["Keywords"] = "portfolio, monte carlo, risk, analytics, finance"
+
+        return self.output_path
+
+
+# ---------------------------
+# Uso mínimo
+# ---------------------------
+# from mcport.report import PortfolioReporter, PDFReportConfig
+# rep = PortfolioReporter(portfolio, "outputs/portfolio_report.pdf",
+#                         PDFReportConfig(do_montecarlo=True, mc_sims=3000))
+# path = rep.build()
+# print("PDF generado en:", path)
