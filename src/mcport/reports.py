@@ -1,4 +1,4 @@
-# src/mcport/reports.py
+# mcport/reports.py
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, Sequence
@@ -8,7 +8,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
+# ✅ Todo viene de plot.py (incluidos los plots de Monte Carlo)
 from .plot import (
+    # PriceSeries / Portfolio
     plot_priceseries_history,
     plot_priceseries_drawdown,
     plot_priceseries_rolling_vol,
@@ -18,15 +20,18 @@ from .plot import (
     plot_portfolio_drawdown,
     plot_portfolio_weights,
     plot_portfolio_corr_heatmap,
-    _DEF_FIGSIZE, _DPI
-)
-from .montecarlo_plots import (
+    # Monte Carlo (ahora también en plot.py)
     plot_mc_paths,
     plot_mc_fan,
     plot_mc_overlay_with_history,
     plot_mc_terminal_hist,
-    plot_mc_terminal_cdf
+    plot_mc_terminal_cdf,
+    # utils
+    _DEF_FIGSIZE, _DPI,
 )
+
+# (Resto del archivo igual que te lo pasé antes: PDFReportConfig, PortfolioReporter, etc.)
+
 
 # Espera tus clases:
 # - PriceSeries
