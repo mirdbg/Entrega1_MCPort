@@ -124,10 +124,15 @@ class PriceSeries:
         if path:
             plt.tight_layout()
             ax.figure.savefig(path, bbox_inches="tight")
-        if created:
-            plt.tight_layout()
+            # si guardas, puedes cerrar para no “llenar” la memoria
             plt.close(ax.figure)
+        else:
+            # si NO guardas, no cierres; en notebook se verá automáticamente
+            plt.tight_layout()
+            # en scripts conviene:
+            # plt.show()
         return ax
+    
     def plot_drawdown(self, ax=None, path=None, fill=True):
         s = self.data["price"].dropna()
         dd = s / s.cummax() - 1
@@ -141,8 +146,16 @@ class PriceSeries:
         ax.set_title(f"Drawdown — {self.symbol}")
         ax.set_ylabel("DD")
         ax.grid(True, alpha=0.3)
-        if path: ax.figure.savefig(path, bbox_inches="tight")
-        if created: plt.close(ax.figure)
+        if path:
+            plt.tight_layout()
+            ax.figure.savefig(path, bbox_inches="tight")
+            # si guardas, puedes cerrar para no “llenar” la memoria
+            plt.close(ax.figure)
+        else:
+            # si NO guardas, no cierres; en notebook se verá automáticamente
+            plt.tight_layout()
+            # en scripts conviene:
+            # plt.show()
         return ax
 
     def plot_rolling_vol(self, window=20, ax=None, path=None):
@@ -156,8 +169,17 @@ class PriceSeries:
         ax.set_title(f"Rolling Vol ({window}) — {self.symbol}")
         ax.set_ylabel("Ann. Vol")
         ax.grid(True, alpha=0.3)
-        if path: ax.figure.savefig(path, bbox_inches="tight")
-        if created: plt.close(ax.figure)
+        if path:
+            plt.tight_layout()
+            ax.figure.savefig(path, bbox_inches="tight")
+            # si guardas, puedes cerrar para no “llenar” la memoria
+            plt.close(ax.figure)
+        else:
+            # si NO guardas, no cierres; en notebook se verá automáticamente
+            plt.tight_layout()
+            # en scripts conviene :
+            # plt.show()
+
         return ax
         
 @dataclass
