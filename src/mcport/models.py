@@ -191,6 +191,7 @@ class Portfolio:
     def __post_init__(self):
         if len(self.positions) != len(self.weights):
             raise ValueError("Se debe introducir el mismo número de posiciones y pesos.")
+        
         w = np.array(self.weights, dtype=float)
         total = w.sum()
         if not np.isclose(total, 1.0):
@@ -227,7 +228,7 @@ class Portfolio:
     def log_returns(self) -> pd.Series:
         eq = self.value_series()
         return np.log(eq).diff().dropna()
-
+    """
     # ---------- Monte Carlo at portfolio level ----------
     def monte_carlo(
         self,
@@ -236,12 +237,12 @@ class Portfolio:
         seed: Optional[int] = 123,
         by_components: bool = False,
     ) -> np.ndarray:
-        """
+        
         Simulate future paths:
         - If by_components=False: simulate the portfolio using its aggregate mu/sigma.
         - If by_components=True: simulate each asset and combine with weights daily.
         Returns (days+1, n_sims) portfolio equity paths.
-        """
+        
         rng = np.random.default_rng(seed)
         if by_components:
             # Simulate each component independently (no correlation for simplicity)
@@ -283,9 +284,9 @@ class Portfolio:
 
     # ---------- Reporting ----------
     def report(self, include_warnings: bool = True) -> str:
-        """
+        
         Generate a Markdown report with stats, warnings, risks, etc.
-        """
+        
         lines = []
         lines.append(f"# Portfolio Report — {self.name}")
         lines.append(f"- Currency: **{self.currency}**")
@@ -346,14 +347,14 @@ class Portfolio:
         days: int = 252,
         seed: int = 7
     ) -> Dict[str, str]:
-        """
+        
         Generate and save a set of useful visualizations. Returns paths to files.
         - Portfolio historical equity curve
         - Drawdown curve
         - Monte Carlo simulated paths (portfolio)
         - Histogram of terminal values (portfolio)
         - Historical price per asset
-        """
+        
         os.makedirs(outdir, exist_ok=True)
         paths = {}
 
@@ -399,4 +400,5 @@ class Portfolio:
             paths[f"{ps.symbol}_history"] = pth
 
         return paths
+        """
 
