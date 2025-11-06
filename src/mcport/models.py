@@ -130,7 +130,7 @@ class PriceSeries:
     """
 @dataclass
 class Portfolio:
-    positions: List[PriceSeries]
+    positions: List["PriceSeries"]
     weights: List[float]  # si no suma uno, se normalizan automáticamente
     name: str = "Cartera"
     currency: str = "USD"
@@ -142,6 +142,9 @@ class Portfolio:
     sigma_ann: float = field(init=False, default=np.nan)
     corr: pd.DataFrame = field(init=False, default_factory=pd.DataFrame)
 
+    # ============================================================
+    # INIT
+    # ============================================================
     def __post_init__(self):
         if len(self.positions) != len(self.weights):
             raise ValueError("Se debe introducir el mismo número de posiciones y pesos.")
@@ -149,15 +152,15 @@ class Portfolio:
         w = np.array(self.weights, dtype=float)
         total = w.sum()
         if not np.isclose(total, 1.0):
-            # Normalize to avoid errors; warn in report later
             self.weights = (w / total).tolist()
         
-        # ➜ calcular estadísticas mínimas al crear
         self._compute_min_stats()
 
-    # ---------- Core methods ----------
+    # ============================================================
+    # MÉTODOS CORE
+    # ============================================================
     def aligned_prices(self) -> pd.DataFrame:
-        """Devuelve df de precios (columna llamada como ticker) en la intersección de las fehcas"""
+        """Devuelve df de precios (una columna por ticker) en la intersección de fechas"""
         frames = []
         for ps in self.positions:
             s = ps.data["price"].rename(ps.symbol)
@@ -171,13 +174,9 @@ class Portfolio:
         if df.empty:
             return pd.Series(dtype=float)
         w = np.array(self.weights)
-        # Convertimos precios a log-returns
         rets = np.log(df).diff().dropna()
-        # Weighted log-return
         port_log_ret = rets.dot(w)
-        # Convert back to price-like equity curve
         eq = np.exp(port_log_ret.cumsum())
-        # scale to initial_capital
         eq = initial_capital * eq / eq.iloc[0]
         eq.name = self.name
         return eq
@@ -186,21 +185,20 @@ class Portfolio:
         eq = self.value_series()
         return np.log(eq).diff().dropna()
 
-
-
-    # ---------- stats mínimas ----------
+    # ============================================================
+    # STATS MÍNIMAS
+    # ============================================================
     def _compute_min_stats(self) -> None:
         """Calcula y guarda mu/σ diarios y anualizados del PORTFOLIO y corr entre activos."""
-        # Stats del portfolio agregado
         r_port = self.log_returns()
         if r_port.empty:
             self.mu_daily = self.sigma_daily = self.mu_ann = self.sigma_ann = np.nan
         else:
             self.mu_daily = float(r_port.mean())
             self.sigma_daily = float(r_port.std(ddof=1))
-            self.mu_ann, self.sigma_ann = self.mu_daily*252 , self.sigma_daily*np.sqrt(252)
+            self.mu_ann = self.mu_daily * 252
+            self.sigma_ann = self.sigma_daily * np.sqrt(252)
 
-        # Correlación entre activos (útil para Monte Carlo multivariante)
         prices = self.aligned_prices()
         if prices.empty:
             self.corr = pd.DataFrame()
@@ -209,18 +207,20 @@ class Portfolio:
 
     def refresh_stats(self) -> None:
         """Recalcula las estadísticas mínimas (llamar tras cambios de posiciones/pesos)."""
-        # normaliza por si cambiaron pesos
         w = np.array(self.weights, dtype=float)
         total = w.sum()
         if not np.isclose(total, 1.0):
             self.weights = (w / total).tolist()
         self._compute_min_stats()
 
+    # ============================================================
+    # STATS AVANZADAS
+    # ============================================================
+    @staticmethod
     def extra_stats_from_returns(r: pd.Series, rf_daily: float = 0.0) -> dict:
         """
         Estadísticos adicionales a partir de retornos log diarios de PORTFOLIO.
-        Devuelve: skew, kurtosis (exceso), sharpe (diario y anual), sortino (anual),
-                VaR/CVaR 95% (diarios), max drawdown.
+        Devuelve: skew, kurtosis, sharpe, sortino, VaR/CVaR 95%, max drawdown.
         """
         if r is None or r.empty:
             return {k: np.nan for k in [
@@ -233,19 +233,15 @@ class Portfolio:
         downside = r[r < rf_daily]
         downside_sigma = downside.std(ddof=1) if len(downside) > 0 else np.nan
 
-        # Sharpe
-        sharpe_daily = (mu - rf_daily) / sigma if sigma and sigma > 0 else np.nan
+        sharpe_daily  = (mu - rf_daily) / sigma if sigma > 0 else np.nan
         sharpe_annual = sharpe_daily * np.sqrt(252) if not np.isnan(sharpe_daily) else np.nan
 
-        # Sortino (usa solo volatilidad a la baja)
         sortino_daily = (mu - rf_daily) / downside_sigma if downside_sigma and downside_sigma > 0 else np.nan
         sortino_annual = sortino_daily * np.sqrt(252) if not np.isnan(sortino_daily) else np.nan
 
-        # VaR/CVaR al 95% (sobre retornos diarios)
-        var95 = np.percentile(r, 5)
-        cvar95 = r[r <= var95].mean()
+        var95  = float(np.percentile(r, 5))
+        cvar95 = float(r[r <= var95].mean())
 
-        # Max drawdown (desde la curva de equity)
         eq = np.exp(r.cumsum())
         peak = eq.cummax()
         dd = (eq / peak) - 1.0
@@ -253,19 +249,19 @@ class Portfolio:
 
         return {
             "skew": float(r.skew()),
-            "kurtosis": float(r.kurt()),  # exceso (normal = 0)
-            "sharpe_daily": float(sharpe_daily) if sharpe_daily == sharpe_daily else np.nan,
-            "sharpe_annual": float(sharpe_annual) if sharpe_annual == sharpe_annual else np.nan,
-            "sortino_annual": float(sortino_annual) if sortino_annual == sortino_annual else np.nan,
-            "VaR95": float(var95),
-            "CVaR95": float(cvar95),
+            "kurtosis": float(r.kurt()),
+            "sharpe_daily": float(sharpe_daily),
+            "sharpe_annual": float(sharpe_annual),
+            "sortino_annual": float(sortino_annual),
+            "VaR95": var95,
+            "CVaR95": cvar95,
             "max_drawdown": max_dd
-            }
+        }
 
-    def extra_stats_from_portfolio(portfolio: "Portfolio", rf_daily: float = 0.0) -> dict:
-        """Convenience: calcula extra stats directamente desde un Portfolio."""
-        r = portfolio.log_returns()
-        return extra_stats_from_returns(r, rf_daily=rf_daily)       
+    def extra_stats_from_portfolio(self, rf_daily: float = 0.0) -> dict:
+        """Convenience: calcula extra stats directamente desde el Portfolio."""
+        r = self.log_returns()
+        return self.extra_stats_from_returns(r, rf_daily=rf_daily)     
 
     """
     # ---------- Reporting ----------
