@@ -74,6 +74,18 @@ MCPort/
 
 ---
 
+## 🧩 Arquitectura visión macro
+┌───────────────┐      ┌─────────────┐      ┌───────────┐      ┌──────────┐      ┌───────────┐
+│   providers   │ ───▶ │   models    │ ───▶ │ montecarlo│ ───▶ │   plot   │ ───▶ │  reports  │
+│ (APIs → DF)   │      │(OO: PS/Port)│      │ (sim GBM) │      │ (figs)   │      │(PDF final)│
+└───────────────┘      └─────────────┘      └───────────┘      └──────────┘      └───────────┘
+         ▲                    ▲                     ▲                 ▲                   ▲
+         └────────────────────┴─────────────────────┴─────────────────┴───────────────────┘
+                                  utils (limpieza, retornos, métricas)
+
+
+---
+
 ## 📊 Ejemplo rápido
 
 ```python
