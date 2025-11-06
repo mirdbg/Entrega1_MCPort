@@ -128,76 +128,36 @@ class PriceSeries:
             plt.tight_layout()
             plt.close(ax.figure)
         return ax
-
-    def plot_simulations(self, paths: np.ndarray, max_paths: int = 50, ax=None, path: str | None = None):
-        if paths is None or paths.size == 0:
-            return None
-        T, N = paths.shape
+    def plot_drawdown(self, ax=None, path=None, fill=True):
+        s = self.data["price"].dropna()
+        dd = s / s.cummax() - 1
         created = ax is None
         if created:
-            fig, ax = plt.subplots(figsize=(9, 4.5), dpi=120)
-
-        # percentiles informativos
-        p_low, p_med, p_high = np.nanpercentile(paths, [5, 50, 95], axis=1)
-        x = np.arange(T)
-
-        # unas pocas trayectorias con alpha
-        k = min(max_paths, N)
-        for i in range(k):
-            ax.plot(x, paths[:, i], linewidth=0.8, alpha=0.35)
-
-        # banda 5–95 y mediana
-        ax.fill_between(x, p_low, p_high, alpha=0.2, linewidth=0)
-        ax.plot(x, p_med, linewidth=1.6)
-
-        ax.set_title(f"Monte Carlo Simulations — {self.symbol} (N={N})")
-        ax.set_xlabel("Step")
-        ax.set_ylabel("Price")
+            fig, ax = plt.subplots(figsize=(9,4.5), dpi=120)
+        if fill:
+            ax.fill_between(dd.index, dd.values, 0, alpha=0.3)
+        else:
+            ax.plot(dd.index, dd.values, lw=1.2)
+        ax.set_title(f"Drawdown — {self.symbol}")
+        ax.set_ylabel("DD")
         ax.grid(True, alpha=0.3)
-
-        if path:
-            plt.tight_layout()
-            ax.figure.savefig(path, bbox_inches="tight")
-        if created:
-            plt.tight_layout()
-            plt.close(ax.figure)
+        if path: ax.figure.savefig(path, bbox_inches="tight")
+        if created: plt.close(ax.figure)
         return ax
 
-    def plot_final_hist(self, finals: np.ndarray, bins: int = 50, ax=None, path: str | None = None):
-        if finals is None or finals.size == 0:
-            return None
-        vals = np.asarray(finals)
-        vals = vals[np.isfinite(vals)]
+    def plot_rolling_vol(self, window=20, ax=None, path=None):
+        r = self.log_returns()
+        if r.empty: return None
+        vol = r.rolling(window).std() * np.sqrt(252)
         created = ax is None
         if created:
-            fig, ax = plt.subplots(figsize=(9, 4.5), dpi=120)
-
-        ax.hist(vals, bins=bins, density=True, alpha=0.8)
-        med = np.nanmedian(vals)
-        mean = np.nanmean(vals)
-        q05, q95 = np.nanpercentile(vals, [5, 95])
-
-        # líneas guía
-        ax.axvline(med, linestyle="--", linewidth=1.2)
-        ax.axvline(mean, linestyle=":", linewidth=1.2)
-        ax.axvline(q05, linestyle="--", linewidth=0.9, alpha=0.7)
-        ax.axvline(q95, linestyle="--", linewidth=0.9, alpha=0.7)
-
-        ax.set_title(f"Terminal Value Distribution — {self.symbol}")
-        ax.set_xlabel("Terminal Price")
-        ax.set_ylabel("Density")
+            fig, ax = plt.subplots(figsize=(9,4.5), dpi=120)
+        ax.plot(vol.index, vol.values, lw=1.4)
+        ax.set_title(f"Rolling Vol ({window}) — {self.symbol}")
+        ax.set_ylabel("Ann. Vol")
         ax.grid(True, alpha=0.3)
-        ax.legend(
-            ["median", "mean", "p05", "p95"],
-            loc="best", frameon=False
-        )
-
-        if path:
-            plt.tight_layout()
-            ax.figure.savefig(path, bbox_inches="tight")
-        if created:
-            plt.tight_layout()
-            plt.close(ax.figure)
+        if path: ax.figure.savefig(path, bbox_inches="tight")
+        if created: plt.close(ax.figure)
         return ax
         
 @dataclass
