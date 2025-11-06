@@ -1,7 +1,8 @@
 # mcport/__init__.py
 
 # --- Núcleo del paquete ---
-from .providers import PriceSeries, Portfolio     # ajusta el módulo si tus clases están en otro archivo
+from .providers import YahooProvider, AlphaVantageProvider
+from .models import PriceSeries, Portfolio     # ajusta el módulo si tus clases están en otro archivo
 from .montecarlo import MonteCarloSimulation
 from .providers import DataProvider, YahooProvider, AlphaVantageProvider
 
